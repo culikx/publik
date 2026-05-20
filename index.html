@@ -3,34 +3,123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube Player Responsive</title>
+<title>YouTube Player</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 
 <style>
-  body { background: #0f0f0f; color: #fff; }
+  body { 
+    background: #0f0f0f; 
+    color: #fff; 
+    font-family: 'Roboto', system-ui, sans-serif;
+  }
+  
+  .player-wrapper {
+    background: #7a0f1c; /* Warna merah gelap kayak di gambar */
+    border-radius: 16px;
+    padding: 24px 20px;
+  }
+
+  .ratio-16x9 {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  /* Progress bar */
+  .time-text {
+    font-size: 14px;
+    color: #e0e0e0;
+    min-width: 45px;
+  }
+  
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    outline: none;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* Control buttons */
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+  }
+  
+  .controls button {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 24px;
+    padding: 8px;
+    transition: 0.2s;
+  }
+  
+  .controls button:hover {
+    opacity: 0.7;
+  }
+  
+  .play-btn {
+    width: 64px;
+    height: 64px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px !important;
+  }
 </style>
 </head>
 <body>
 <div class="container py-4">
   <div class="row justify-content-center">
-    <div class="col-lg-9">
+    <div class="col-lg-8">
       
-      <!-- Bootstrap Ratio 16x9 -->
-      <div class="ratio ratio-16x9 rounded-3 overflow-hidden shadow-lg">
-        <div id="player"></div>
-      </div>
+      <div class="player-wrapper">
+        <!-- Video -->
+        <div class="ratio ratio-16x9 mb-3">
+          <div id="player"></div>
+        </div>
 
-      <!-- Title & Controls -->
-      <div class="mt-3">
-        <h5 id="videoTitle" class="mb-2">
-          <i class="bi bi-play-circle-fill text-danger me-2"></i>Loading...
-        </h5>
-        
-        <div class="d-flex gap-2">
-          <button id="play" class="btn btn-outline-light btn-sm"><i class="bi bi-play-fill"></i> Play</button>
-          <button id="pause" class="btn btn-outline-light btn-sm"><i class="bi bi-pause-fill"></i> Pause</button>
+        <!-- Progress -->
+        <div class="d-flex align-items-center gap-3">
+          <span class="time-text" id="currentTime">00:00</span>
+          <input type="range" id="seek" min="0" max="100" value="0">
+          <span class="time-text" id="duration">00:00</span>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+          <button id="repeat"><i class="bi bi-arrow-repeat"></i></button>
+          <button id="prev"><i class="bi bi-skip-backward-fill"></i></button>
+          <button id="playPause" class="play-btn"><i class="bi bi-play-fill"></i></button>
+          <button id="next"><i class="bi bi-skip-forward-fill"></i></button>
+          <button id="playlist"><i class="bi bi-list"></i></button>
         </div>
       </div>
 
@@ -41,40 +130,69 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
   const videoId = new URLSearchParams(window.location.search).get('v') || 'dQw4w9WgXcQ';
-  
-  // Load YouTube API
+  let player, isPlaying = false, isLoop = false;
+
   const tag = document.createElement('script');
   tag.src = "https://www.youtube.com/iframe_api";
   document.head.appendChild(tag);
 
-  let player;
-
   function onYouTubeIframeAPIReady() {
     player = new YT.Player('player', {
       videoId: videoId,
-      playerVars: { 
-        controls: 1, 
-        rel: 0, 
-        modestbranding: 1 
-      },
-      events: {
-        'onReady': onPlayerReady
-      }
+      playerVars: { controls: 0, rel: 0, modestbranding: 1, enablejsapi: 1 },
+      events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange }
     });
   }
 
   function onPlayerReady() {
-    // Ambil title video
-    const videoData = player.getVideoData();
-    document.getElementById('videoTitle').innerHTML = 
-      `<i class="bi bi-play-circle-fill text-danger me-2"></i>${videoData.title}`;
-    
-    document.title = videoData.title + ' - YouTube Player';
+    document.getElementById('duration').textContent = formatTime(player.getDuration());
+    document.getElementById('seek').max = player.getDuration();
+    setInterval(updateProgress, 500);
   }
 
-  // Control buttons
-  document.getElementById('play').onclick = () => player.playVideo();
-  document.getElementById('pause').onclick = () => player.pauseVideo();
+  function onPlayerStateChange(e) {
+    isPlaying = e.data === YT.PlayerState.PLAYING;
+    document.getElementById('playPause').innerHTML = 
+      isPlaying ? '<i class="bi bi-pause-fill"></i>' : '<i class="bi bi-play-fill"></i>';
+    
+    // Loop kalau selesai
+    if (e.data === YT.PlayerState.ENDED && isLoop) {
+      player.seekTo(0);
+      player.playVideo();
+    }
+  }
+
+  // Button events
+  document.getElementById('playPause').onclick = () => {
+    isPlaying ? player.pauseVideo() : player.playVideo();
+  };
+
+  document.getElementById('repeat').onclick = () => {
+    isLoop = !isLoop;
+    document.getElementById('repeat').style.opacity = isLoop ? '1' : '0.5';
+  };
+
+  document.getElementById('prev').onclick = () => player.seekTo(player.getCurrentTime() - 10);
+  document.getElementById('next').onclick = () => player.seekTo(player.getCurrentTime() + 10);
+  
+  document.getElementById('seek').oninput = (e) => {
+    player.seekTo(e.target.value, true);
+  };
+
+  function updateProgress() {
+    if (player && player.getCurrentTime) {
+      const time = player.getCurrentTime();
+      document.getElementById('currentTime').textContent = formatTime(time);
+      document.getElementById('seek').value = time;
+    }
+  }
+
+  function formatTime(sec) {
+    sec = Math.floor(sec);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  }
 </script>
 </body>
 </html>
